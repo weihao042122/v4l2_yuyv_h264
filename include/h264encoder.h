@@ -3,15 +3,15 @@
 
 #include <stdint.h>
 #include <stdio.h>
-#include "x264.h"
+#include <x264.h>
 
 typedef unsigned char uint8_t;
 
 typedef struct {
-	x264_param_t *param;
-	x264_t *handle;
-	x264_picture_t *picture; 
-	x264_nal_t *nal;
+    x264_param_t *param;
+    x264_t *handle;
+    x264_picture_t *picture;
+    x264_nal_t *nal;
 } Encoder;
 
 

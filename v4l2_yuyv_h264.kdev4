@@ -1,0 +1,4 @@
+[Project]
+CreatedFrom=Makefile
+Manager=KDevCustomMakeManager
+Name=v4l2_yuyv_h264
