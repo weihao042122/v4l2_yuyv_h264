@@ -22,14 +22,23 @@
 #include <errno.h>
 #include <assert.h>
 #include "./include/h264encoder.h"
+
+#include <sys/stat.h>
+#include <getopt.h>
+
+
 #define WIDTH		640
 #define	HIGHT		480
 #define COUNT		100
 #define FILE_VIDEO      "/dev/video0"
 
-char h264_file_name[20] = "/data/test.h264";
+static char *dev_name = FILE_VIDEO;
+static int frame_count = COUNT;
+char *h264_file_name = "/data/test.h264";
+char *h264_pipe_file = NULL;
 char *h264_buf;
 static unsigned int n_buffer = 0;
+int force_format = 0;
 Encoder en;
 FILE *h264_fp;
 
@@ -47,7 +56,15 @@ void init_encoder(int width, int height)
 }
 
 void init_file() {
-    h264_fp = fopen(h264_file_name, "wa+");
+    if (h264_pipe_file == NULL){
+        h264_fp = fopen(h264_file_name, "wa+");
+    }else{
+        mkfifo(h264_pipe_file, 0777);
+        h264_fp = fopen(h264_pipe_file, "wa+");
+        if (h264_fp == NULL){
+            printf("======error=========\n");
+        }
+    }
 }
 
 void close_encoder() {
@@ -145,10 +162,10 @@ int open_camera(void)
     int fd;
     struct v4l2_input inp;
 
-    fd = open(FILE_VIDEO, O_RDWR | O_NONBLOCK,0);
+    fd = open(dev_name, O_RDWR | O_NONBLOCK,0);
     if(fd < 0)
     {
-        fprintf(stderr, "%s open err \n", FILE_VIDEO);
+        fprintf(stderr, "%s open err \n", dev_name);
         exit(EXIT_FAILURE);
     };
 
@@ -288,7 +305,7 @@ int read_frame(int fd)
 
 int mainloop(int fd)
 {
-    int count = COUNT;
+    int count = frame_count;
     while(count-- > 0)
     {
         for(;;)
@@ -358,10 +375,92 @@ void close_camera_device(int fd)
     }
 }
 
-void main(void)
+static void errno_exit(const char *s)
+{
+    fprintf(stderr, "%s error %d, %s\\n", s, errno, strerror(errno));
+    exit(EXIT_FAILURE);
+}
+
+static void usage ( FILE *fp, int argc, char **argv )
+{
+    fprintf ( fp,
+              "Usage: %s [options]\\n\\n"
+              "Version 1.3\\n"
+              "Options:\\n"
+              "-d | --device name   Video device name [%s]\n"
+              "-h | --help          Print this message\n"
+              "-p | --pipe          Outputs to a pipe file\n"
+              "-o | --output        Outputs stream to stdout\n"
+              "-f | --format        Force format to 640x480 YUYV\n"
+              "-c | --count         Number of frames to grab [%i]\n"
+
+              "\n",
+              argv[0], dev_name, frame_count );
+}
+
+static const char short_options[] = "d:hp:o:fc:";
+
+static const struct option
+    long_options[] = {
+    { "device", required_argument, NULL, 'd' },
+    { "help",   no_argument,       NULL, 'h' },    
+    { "pipe",   required_argument, NULL, 'p' },
+    { "output", no_argument,       NULL, 'o' },
+    { "format", no_argument,       NULL, 'f' },
+    { "count",  required_argument, NULL, 'c' },
+    { 0, 0, 0, 0 }
+};
+
+void parse_argv(int argc, char **argv){
+    for ( ;; ) {
+        int idx;
+        int c;
+
+        c = getopt_long ( argc, argv,
+                          short_options, long_options, &idx );
+
+        if ( -1 == c )
+            break;
+        printf("optarg=%s\n", optarg);
+
+        switch ( c ) {
+        case 0: /* getopt_long() flag */
+            break;
+        case 'd':
+            dev_name = optarg;
+            break;
+        case 'h':
+            usage ( stdout, argc, argv );
+            exit ( EXIT_SUCCESS );
+            break;
+        case 'p':
+            h264_pipe_file = optarg;
+            break;
+        case 'o':
+            h264_file_name = optarg;
+            break;
+        case 'c':         
+		    errno = 0;
+		    frame_count = strtol(optarg, NULL, 0);
+		    if (errno)
+			    errno_exit(optarg);
+		    break;
+        case 'f':
+            force_format++;
+            break;
+
+        default:
+            usage ( stderr, argc, argv );
+            exit ( EXIT_FAILURE );
+        }
+    }
+}
+
+int main(int argc, char **argv)
 {
     int fd;
     float dt;
+    parse_argv(argc, argv);
     struct timeval now, start;
 
     fd = open_camera();
@@ -379,6 +478,7 @@ void main(void)
 
     stop_capture(fd);
     close_camera_device(fd);
+    return 0;
 }
 
 
